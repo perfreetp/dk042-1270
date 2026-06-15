@@ -354,6 +354,8 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">状态</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">所属业务</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">负责人</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">用途</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">部门</th>
                   <th 
                     className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-slate-200"
                     onClick={() => handleSort('monthlyCost')}
@@ -369,6 +371,8 @@ export default function InventoryPage() {
               <tbody>
                 {paginatedResources.map((resource, idx) => {
                   const ownerTag = resource.tags.find(t => t.key === 'Owner');
+                  const usageTag = resource.tags.find(t => t.key === 'Usage');
+                  const deptTag = resource.tags.find(t => t.key === 'Department');
                   return (
                     <tr 
                       key={resource.id}
@@ -404,7 +408,21 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-4 py-3">
                         {ownerTag ? (
-                          <span className="text-sm text-slate-300">{ownerTag.value}</span>
+                          <span className="text-sm text-emerald-400">{ownerTag.value}</span>
+                        ) : (
+                          <span className="text-xs text-rose-400">未标记</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {usageTag ? (
+                          <span className="text-sm text-amber-400">{usageTag.value}</span>
+                        ) : (
+                          <span className="text-xs text-rose-400">未标记</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {deptTag ? (
+                          <span className="text-sm text-violet-400">{deptTag.value}</span>
                         ) : (
                           <span className="text-xs text-rose-400">未标记</span>
                         )}

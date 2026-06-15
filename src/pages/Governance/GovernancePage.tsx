@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { 
   Tags, AlertTriangle, CheckCircle, XCircle, 
   TrendingUp, Trash2, Edit3, Shield, AlertCircle,
-  ChevronDown, ChevronRight, Plus, Tag as TagIcon, Building2
+  ChevronDown, ChevronRight, Plus, Tag as TagIcon, Building2,
+  Search, Eye, Zap, Copy, AlertOctagon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResourceStore } from '@/store/useResourceStore';
@@ -13,16 +14,19 @@ import TagBadge from '@/components/TagBadge';
 import { applications } from '@/data/mockData';
 import type { CloudResource } from '@/types';
 
-type TabType = 'coverage' | 'idle' | 'risk' | 'editor';
+type TabType = 'coverage' | 'idle' | 'risk' | 'editor' | 'audit';
 
 export default function GovernancePage() {
-  const { resources, tasks, updateResourceTags, addTask } = useResourceStore();
+  const { resources, tasks, updateResourceTags, addTask, setSelectedResource, toggleDetailPanel } = useResourceStore();
   const [activeTab, setActiveTab] = useState<TabType>('coverage');
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
   const [showTagModal, setShowTagModal] = useState(false);
   const [selectedResources, setSelectedResources] = useState<string[]>([]);
   const [newTagKey, setNewTagKey] = useState('');
   const [newTagValue, setNewTagValue] = useState('');
+  const [auditDimension, setAuditDimension] = useState<string>('Owner');
+  const [auditView, setAuditView] = useState<'missing' | 'duplicate' | 'suspicious'>('missing');
+  const [auditSearch, setAuditSearch] = useState('');
 
   const totalResources = resources.length;
   
@@ -85,6 +89,68 @@ export default function GovernancePage() {
       .slice(0, 8);
   }, [resources]);
 
+  const auditDimensions = [
+    { key: 'Owner', label: '负责人', color: 'emerald' },
+    { key: 'Usage', label: '用途', color: 'amber' },
+    { key: 'Department', label: '部门', color: 'violet' },
+    { key: 'Environment', label: '环境', color: 'cyan' },
+  ];
+
+  const dimColorClasses: Record<string, string> = {
+    emerald: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30',
+    amber: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+    violet: 'bg-violet-500/15 text-violet-400 border border-violet-500/30',
+    cyan: 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30',
+  };
+
+  const auditData = useMemo(() => {
+    const missing = resources.filter(r => !r.tags.some(t => t.key === auditDimension && t.value.trim()));
+    
+    const valueMap = new Map<string, CloudResource[]>();
+    resources.forEach(r => {
+      const tag = r.tags.find(t => t.key === auditDimension);
+      if (tag && tag.value.trim()) {
+        const val = tag.value.trim();
+        if (!valueMap.has(val)) valueMap.set(val, []);
+        valueMap.get(val)!.push(r);
+      }
+    });
+    
+    const duplicates = Array.from(valueMap.entries())
+      .filter(([_, resList]) => resList.length > 3)
+      .map(([value, resList]) => ({ value, resources: resList, count: resList.length }))
+      .sort((a, b) => b.count - a.count);
+    
+    const suspiciousPatterns: { value: string; resources: CloudResource[]; reason: string }[] = [];
+    valueMap.forEach((resList, value) => {
+      if (value.length < 2) {
+        suspiciousPatterns.push({ value, resources: resList, reason: '值过短' });
+      }
+      if (/^(test|tmp|temp|demo|example|123|aaa|test123)$/i.test(value)) {
+        suspiciousPatterns.push({ value, resources: resList, reason: '疑似测试值' });
+      }
+      if (/^[\u4e00-\u9fa5]/.test(value) && value.length > 15) {
+        suspiciousPatterns.push({ value, resources: resList, reason: '值过长' });
+      }
+    });
+    
+    return {
+      missing,
+      duplicates,
+      suspicious: suspiciousPatterns.sort((a, b) => b.resources.length - a.resources.length),
+      missingCount: missing.length,
+      duplicateValueCount: duplicates.length,
+      suspiciousValueCount: suspiciousPatterns.length,
+      duplicateResourceCount: duplicates.reduce((s, d) => s + d.count, 0),
+      suspiciousResourceCount: suspiciousPatterns.reduce((s, d) => s + d.resources.length, 0),
+    };
+  }, [resources, auditDimension]);
+
+  const handleOpenResource = (resourceId: string) => {
+    setSelectedResource(resourceId);
+    toggleDetailPanel(true);
+  };
+
   const ownerCoverage = coverageData.ownerCov;
   const usageCoverage = coverageData.usageCov;
   const envCoverage = coverageData.envCov;
@@ -131,6 +197,7 @@ export default function GovernancePage() {
 
   const tabs = [
     { key: 'coverage', label: '标签覆盖率', icon: <Tags size={16} /> },
+    { key: 'audit', label: '标签审计', icon: <Shield size={16} />, badge: auditData.missingCount + auditData.duplicateValueCount + auditData.suspiciousValueCount },
     { key: 'idle', label: '闲置资源', icon: <AlertCircle size={16} />, badge: idleResources.length },
     { key: 'risk', label: '风险暴露项', icon: <Shield size={16} />, badge: riskResources.length },
     { key: 'editor', label: '批量标签编辑', icon: <Edit3 size={16} /> },
@@ -256,6 +323,246 @@ export default function GovernancePage() {
             </div>
           )}
         </>
+      )}
+
+      {activeTab === 'audit' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-4 gap-4">
+            <StatCard
+              title="缺失标签资源"
+              value={auditData.missingCount}
+              subtitle={`${auditDimension === 'Owner' ? '负责人' : auditDimension === 'Usage' ? '用途' : auditDimension === 'Department' ? '部门' : '环境'}标签缺失`}
+              icon={<XCircle size={20} className="text-rose-400" />}
+              color="rose"
+            />
+            <StatCard
+              title="重复值数量"
+              value={auditData.duplicateValueCount}
+              subtitle={`涉及 ${auditData.duplicateResourceCount} 个资源`}
+              icon={<Copy size={20} className="text-amber-400" />}
+              color="amber"
+            />
+            <StatCard
+              title="可疑值数量"
+              value={auditData.suspiciousValueCount}
+              subtitle={`涉及 ${auditData.suspiciousResourceCount} 个资源`}
+              icon={<AlertTriangle size={20} className="text-violet-400" />}
+              color="cyan"
+            />
+            <StatCard
+              title="标签总数"
+              value={resources.length}
+              subtitle="全部资源基数"
+              icon={<Tags size={20} className="text-emerald-400" />}
+              color="emerald"
+            />
+          </div>
+
+          <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                  <Shield size={20} className="text-cyan-400" />
+                  标签审计
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  按维度审查标签质量，发现缺失、重复和可疑值
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    placeholder="搜索资源名..."
+                    className="w-48 h-8 pl-8 pr-3 bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-3 border-b border-slate-800 bg-slate-800/30">
+              <div className="flex items-center justify-between">
+                <div className="flex gap-1">
+                  {auditDimensions.map((dim) => (
+                    <button
+                      key={dim.key}
+                      onClick={() => setAuditDimension(dim.key)}
+                      className={cn(
+                        'px-4 py-1.5 text-xs font-medium rounded-lg transition-all',
+                        auditDimension === dim.key
+                          ? dimColorClasses[dim.color]
+                          : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                      )}
+                    >
+                      {dim.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1 p-1 bg-slate-800/60 rounded-lg">
+                  {[
+                    { key: 'missing', label: '缺失标签', icon: <XCircle size={12} /> },
+                    { key: 'duplicate', label: '重复值', icon: <Copy size={12} /> },
+                    { key: 'suspicious', label: '可疑值', icon: <AlertOctagon size={12} /> },
+                  ].map((view) => (
+                    <button
+                      key={view.key}
+                      onClick={() => setAuditView(view.key as any)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all',
+                        auditView === view.key
+                          ? 'bg-slate-900 text-cyan-400'
+                          : 'text-slate-400 hover:text-slate-200'
+                      )}
+                    >
+                      {view.icon}
+                      {view.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 max-h-[500px] overflow-y-auto">
+              {auditView === 'missing' && (
+                <div className="space-y-2">
+                  {auditData.missing.filter(r => !auditSearch || r.name.toLowerCase().includes(auditSearch.toLowerCase())).length === 0 ? (
+                    <div className="py-12 text-center">
+                      <CheckCircle size={40} className="mx-auto text-emerald-500/40 mb-3" />
+                      <p className="text-sm text-slate-500">暂无缺失 {auditDimension} 标签的资源</p>
+                    </div>
+                  ) : (
+                    auditData.missing
+                      .filter(r => !auditSearch || r.name.toLowerCase().includes(auditSearch.toLowerCase()))
+                      .map((resource) => (
+                        <div
+                          key={resource.id}
+                          className="flex items-center justify-between p-3 rounded-lg bg-rose-500/5 border border-rose-500/20 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          onClick={() => handleOpenResource(resource.id)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center flex-shrink-0">
+                              <XCircle size={14} className="text-rose-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{resource.name}</p>
+                              <p className="text-xs text-slate-500">{getResourceTypeName(resource.type)} · {resource.id}</p>
+                            </div>
+                          </div>
+                          <button className="flex items-center gap-1 px-2.5 py-1 text-xs bg-rose-500/20 text-rose-400 rounded-md hover:bg-rose-500/30 transition-colors">
+                            <Edit3 size={12} />
+                            补标签
+                          </button>
+                        </div>
+                      ))
+                  )}
+                </div>
+              )}
+
+              {auditView === 'duplicate' && (
+                <div className="space-y-3">
+                  {auditData.duplicates.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <CheckCircle size={40} className="mx-auto text-emerald-500/40 mb-3" />
+                      <p className="text-sm text-slate-500">暂无高度重复的 {auditDimension} 标签值</p>
+                    </div>
+                  ) : (
+                    auditData.duplicates.map((dup, idx) => (
+                      <div key={idx} className="rounded-lg border border-slate-700 overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-3 bg-amber-500/5 border-b border-slate-700">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                              <Copy size={14} className="text-amber-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{dup.value}</p>
+                              <p className="text-xs text-slate-500">被 {dup.count} 个资源使用</p>
+                            </div>
+                          </div>
+                          <span className="text-xs text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded border border-amber-500/30">
+                            高度重复
+                          </span>
+                        </div>
+                        <div className="p-3 max-h-40 overflow-y-auto space-y-1.5">
+                          {dup.resources
+                            .filter(r => !auditSearch || r.name.toLowerCase().includes(auditSearch.toLowerCase()))
+                            .slice(0, 10)
+                            .map((r) => (
+                              <div
+                                key={r.id}
+                                className="flex items-center justify-between px-3 py-2 rounded-md bg-slate-800/40 hover:bg-slate-800 transition-colors cursor-pointer"
+                                onClick={() => handleOpenResource(r.id)}
+                              >
+                                <span className="text-xs text-slate-300">{r.name}</span>
+                                <span className="text-[11px] text-slate-500">{getResourceTypeName(r.type)}</span>
+                              </div>
+                            ))}
+                          {dup.resources.length > 10 && (
+                            <div className="text-center text-xs text-slate-500 pt-1">
+                              +{dup.resources.length - 10} 个更多资源
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {auditView === 'suspicious' && (
+                <div className="space-y-3">
+                  {auditData.suspicious.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <CheckCircle size={40} className="mx-auto text-emerald-500/40 mb-3" />
+                      <p className="text-sm text-slate-500">暂无可疑的 {auditDimension} 标签值</p>
+                    </div>
+                  ) : (
+                    auditData.suspicious.map((item, idx) => (
+                      <div key={idx} className="rounded-lg border border-slate-700 overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-3 bg-violet-500/5 border-b border-slate-700">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-violet-500/15 flex items-center justify-center">
+                              <AlertTriangle size={14} className="text-violet-400" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-white">{item.value}</p>
+                              <p className="text-xs text-slate-500">涉及 {item.resources.length} 个资源</p>
+                            </div>
+                          </div>
+                          <span className="text-xs text-violet-400 bg-violet-500/15 px-2 py-0.5 rounded border border-violet-500/30">
+                            {item.reason}
+                          </span>
+                        </div>
+                        <div className="p-3 max-h-40 overflow-y-auto space-y-1.5">
+                          {item.resources
+                            .filter(r => !auditSearch || r.name.toLowerCase().includes(auditSearch.toLowerCase()))
+                            .slice(0, 10)
+                            .map((r) => (
+                              <div
+                                key={r.id}
+                                className="flex items-center justify-between px-3 py-2 rounded-md bg-slate-800/40 hover:bg-slate-800 transition-colors cursor-pointer"
+                                onClick={() => handleOpenResource(r.id)}
+                              >
+                                <span className="text-xs text-slate-300">{r.name}</span>
+                                <span className="text-[11px] text-slate-500">{getResourceTypeName(r.type)}</span>
+                              </div>
+                            ))}
+                          {item.resources.length > 10 && (
+                            <div className="text-center text-xs text-slate-500 pt-1">
+                              +{item.resources.length - 10} 个更多资源
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {activeTab === 'idle' && (
