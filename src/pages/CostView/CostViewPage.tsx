@@ -47,6 +47,9 @@ export default function CostViewPage() {
     return filteredResources.filter(r => r.isIdle).reduce((sum, r) => sum + r.monthlyCost, 0);
   }, [filteredResources]);
 
+  const idleCostPercent = totalMonthlyCost > 0 ? Math.round((idleCost / totalMonthlyCost) * 100) : 0;
+  const avgResourceCost = totalResources > 0 ? Math.round(totalMonthlyCost / totalResources) : 0;
+
   const trendData = period === '12m' ? costRecords : costRecords.slice(-6);
   
   const lastMonthCost = costRecords[costRecords.length - 1]?.amount || 0;
@@ -89,9 +92,25 @@ export default function CostViewPage() {
     })).sort((a, b) => b.amount - a.amount).slice(0, 10);
   }, [filteredResources, totalMonthlyCost]);
 
+  const costByTypeFiltered = useMemo(() => {
+    const typeNames: Record<string, string> = {
+      ecs: '云服务器', oss: '对象存储', slb: '负载均衡',
+      rds: '云数据库', vpc: '私有网络', redis: '云缓存',
+    };
+    const map = new Map<string, number>();
+    filteredResources.forEach(r => {
+      map.set(r.type, (map.get(r.type) || 0) + r.monthlyCost);
+    });
+    return Array.from(map.entries()).map(([type, amount]) => ({
+      name: typeNames[type] || type.toUpperCase(),
+      amount,
+      percentage: totalMonthlyCost > 0 ? Math.round((amount / totalMonthlyCost) * 100) : 0,
+    })).sort((a, b) => b.amount - a.amount);
+  }, [filteredResources, totalMonthlyCost]);
+
   const pieData = viewMode === 'account' ? costByAccount :
                    viewMode === 'region' ? costByRegion :
-                   viewMode === 'app' ? costByApp : costByType;
+                   viewMode === 'app' ? costByApp : costByTypeFiltered;
 
   const topResources = useMemo(() => {
     return [...filteredResources]
@@ -115,10 +134,9 @@ export default function CostViewPage() {
     <div className="space-y-5 animate-fade-in-up">
       <div className="grid grid-cols-4 gap-4">
         <StatCard
-          title="本月总费用"
-          value={formatCurrency(lastMonthCost)}
-          trend={parseFloat(monthlyGrowth)}
-          subtitle="较上月"
+          title="本月总费用（筛选后）"
+          value={formatCurrency(totalMonthlyCost)}
+          subtitle={`较全量 ${totalMonthlyCost < lastMonthCost ? '减少' : '增加'} ${formatCurrency(Math.abs(lastMonthCost - totalMonthlyCost))}`}
           icon={<DollarSign size={20} className="text-cyan-400" />}
           color="cyan"
         />
@@ -132,14 +150,13 @@ export default function CostViewPage() {
         <StatCard
           title="闲置资源费用"
           value={formatCurrency(idleCost)}
-          subtitle="占总费用 "
-          trend={-Math.round((idleCost / totalMonthlyCost) * 100)}
+          subtitle={`占比 ${idleCostPercent}%`}
           icon={<TrendingDown size={20} className="text-amber-400" />}
           color="amber"
         />
         <StatCard
           title="平均单资源费用"
-          value={formatCurrency(Math.round(totalMonthlyCost / totalResources))}
+          value={formatCurrency(avgResourceCost)}
           subtitle="每月"
           icon={<BarChart3 size={20} className="text-rose-400" />}
           color="rose"
@@ -323,26 +340,33 @@ export default function CostViewPage() {
         <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
           <h3 className="text-base font-semibold text-white mb-4">Top 10 高费用资源</h3>
           <div className="space-y-2">
-            {topResources.map((resource, idx) => (
-              <div 
-                key={resource.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-slate-800/30 hover:bg-slate-800/60 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700/50 text-xs font-mono text-slate-400">
-                    {idx + 1}
-                  </span>
-                  <div>
-                    <p className="text-sm text-white font-medium">{resource.name}</p>
-                    <p className="text-xs text-slate-500">{resource.type?.toUpperCase()}</p>
+            {topResources.length > 0 ? (
+              topResources.map((resource, idx) => (
+                <div 
+                  key={resource.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-slate-800/30 hover:bg-slate-800/60 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-700/50 text-xs font-mono text-slate-400">
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <p className="text-sm text-white font-medium">{resource.name}</p>
+                      <p className="text-xs text-slate-500">{resource.type?.toUpperCase()}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-emerald-400">{formatCurrency(resource.monthlyCost)}</p>
+                    <p className="text-[11px] text-slate-500">/ 月</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-emerald-400">{formatCurrency(resource.monthlyCost)}</p>
-                  <p className="text-[11px] text-slate-500">/ 月</p>
-                </div>
+              ))
+            ) : (
+              <div className="py-12 text-center">
+                <DollarSign size={36} className="mx-auto text-slate-700 mb-3" />
+                <p className="text-sm text-slate-500">暂无符合筛选条件的资源</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

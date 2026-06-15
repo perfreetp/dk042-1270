@@ -57,8 +57,12 @@ export function getProviderName(provider: string): string {
 export function getTaskTypeName(type: string): string {
   const names: Record<string, string> = {
     idle_cleanup: '闲置清理',
+    idle: '闲置清理',
     tag_complete: '标签补全',
+    tag_missing: '标签补全',
     risk_fix: '风险修复',
+    risk: '风险修复',
+    other: '资源整理',
   };
   return names[type] || type;
 }
@@ -70,4 +74,16 @@ export function getPriorityName(priority: string): string {
     low: '低优先级',
   };
   return names[priority] || priority;
+}
+
+export function getChangeTypeName(type: string): string {
+  const names: Record<string, string> = {
+    owner_change: '负责人变更',
+    tag_change: '标签变更',
+    tag_update: '标签更新',
+    status_change: '状态变更',
+    task_create: '创建任务',
+    app_change: '归属变更',
+  };
+  return names[type] || '变更';
 }

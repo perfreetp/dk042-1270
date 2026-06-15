@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { 
   Tags, AlertTriangle, CheckCircle, XCircle, 
   TrendingUp, Trash2, Edit3, Shield, AlertCircle,
-  ChevronDown, ChevronRight, Plus, Tag as TagIcon
+  ChevronDown, ChevronRight, Plus, Tag as TagIcon, Building2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useResourceStore } from '@/store/useResourceStore';
@@ -10,6 +10,7 @@ import { formatCurrency, getResourceTypeName } from '@/utils/format';
 import StatCard from '@/components/StatCard';
 import StatusBadge from '@/components/StatusBadge';
 import TagBadge from '@/components/TagBadge';
+import { applications } from '@/data/mockData';
 import type { CloudResource } from '@/types';
 
 type TabType = 'coverage' | 'idle' | 'risk' | 'editor';
@@ -25,19 +26,69 @@ export default function GovernancePage() {
 
   const totalResources = resources.length;
   
-  const resourcesWithOwner = resources.filter(r => r.tags.some(t => t.key === 'Owner')).length;
-  const resourcesWithUsage = resources.filter(r => r.tags.some(t => t.key === 'Usage')).length;
-  const resourcesWithEnv = resources.filter(r => r.tags.some(t => t.key === 'Environment')).length;
-  
+  const coverageData = useMemo(() => {
+    const withOwner = resources.filter(r => r.tags.some(t => t.key === 'Owner')).length;
+    const withUsage = resources.filter(r => r.tags.some(t => t.key === 'Usage')).length;
+    const withEnv = resources.filter(r => r.tags.some(t => t.key === 'Environment')).length;
+    const withDept = resources.filter(r => r.tags.some(t => t.key === 'Department')).length;
+    
+    const ownerCov = totalResources > 0 ? Math.round((withOwner / totalResources) * 100) : 0;
+    const usageCov = totalResources > 0 ? Math.round((withUsage / totalResources) * 100) : 0;
+    const envCov = totalResources > 0 ? Math.round((withEnv / totalResources) * 100) : 0;
+    const deptCov = totalResources > 0 ? Math.round((withDept / totalResources) * 100) : 0;
+    const avgCov = Math.round((ownerCov + usageCov + envCov + deptCov) / 4);
+    
+    return {
+      withOwner, withUsage, withEnv, withDept,
+      ownerCov, usageCov, envCov, deptCov, avgCov,
+    };
+  }, [resources, totalResources]);
+
   const idleResources = resources.filter(r => r.isIdle);
   const idleCost = idleResources.reduce((sum, r) => sum + r.monthlyCost, 0);
   
   const riskResources = resources.filter(r => r.isRisk);
 
-  const ownerCoverage = Math.round((resourcesWithOwner / totalResources) * 100);
-  const usageCoverage = Math.round((resourcesWithUsage / totalResources) * 100);
-  const envCoverage = Math.round((resourcesWithEnv / totalResources) * 100);
-  const avgCoverage = Math.round((ownerCoverage + usageCoverage + envCoverage) / 3);
+  const appCoverageData = useMemo(() => {
+    return applications.map(app => {
+      const appResources = resources.filter(r => r.appId === app.id);
+      if (appResources.length === 0) return { name: app.name, value: 0 };
+      
+      const tagged = appResources.filter(r => 
+        r.tags.some(t => t.key === 'Owner') &&
+        r.tags.some(t => t.key === 'Usage')
+      ).length;
+      return {
+        name: app.name,
+        value: Math.round((tagged / appResources.length) * 100),
+        resourceCount: appResources.length,
+      };
+    }).filter(a => a.resourceCount > 0).sort((a, b) => b.value - a.value);
+  }, [resources]);
+
+  const departmentDistribution = useMemo(() => {
+    const map = new Map<string, number>();
+    resources.forEach(r => {
+      const deptTag = r.tags.find(t => t.key === 'Department');
+      if (deptTag && deptTag.value) {
+        map.set(deptTag.value, (map.get(deptTag.value) || 0) + 1);
+      }
+    });
+    const withDept = Array.from(map.values()).reduce((a, b) => a + b, 0);
+    return Array.from(map.entries())
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: withDept > 0 ? Math.round((count / withDept) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [resources]);
+
+  const ownerCoverage = coverageData.ownerCov;
+  const usageCoverage = coverageData.usageCov;
+  const envCoverage = coverageData.envCov;
+  const avgCoverage = coverageData.avgCov;
 
   const toggleExpand = (id: string) => {
     setExpandedRows(prev => 
@@ -89,11 +140,11 @@ export default function GovernancePage() {
     <div className="space-y-5 animate-fade-in-up">
       {activeTab === 'coverage' && (
         <>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-5 gap-4">
             <StatCard
               title="综合标签覆盖率"
               value={`${avgCoverage}%`}
-              subtitle="三项标签平均覆盖率"
+              subtitle="四项标签平均覆盖率"
               trend={5.2}
               icon={<Tags size={20} className="text-cyan-400" />}
               color="cyan"
@@ -101,23 +152,30 @@ export default function GovernancePage() {
             <StatCard
               title="负责人标签"
               value={`${ownerCoverage}%`}
-              subtitle={`${resourcesWithOwner} / ${totalResources} 个资源`}
+              subtitle={`${coverageData.withOwner} / ${totalResources} 个资源`}
               icon={<CheckCircle size={20} className="text-emerald-400" />}
               color="emerald"
             />
             <StatCard
               title="用途标签"
               value={`${usageCoverage}%`}
-              subtitle={`${resourcesWithUsage} / ${totalResources} 个资源`}
+              subtitle={`${coverageData.withUsage} / ${totalResources} 个资源`}
               icon={<TagIcon size={20} className="text-amber-400" />}
               color="amber"
             />
             <StatCard
               title="环境标签"
               value={`${envCoverage}%`}
-              subtitle={`${resourcesWithEnv} / ${totalResources} 个资源`}
+              subtitle={`${coverageData.withEnv} / ${totalResources} 个资源`}
               icon={<Shield size={20} className="text-rose-400" />}
               color="rose"
+            />
+            <StatCard
+              title="部门标签"
+              value={`${coverageData.deptCov}%`}
+              subtitle={`${coverageData.withDept} / ${totalResources} 个资源`}
+              icon={<Building2 size={20} className="text-violet-400" />}
+              color="cyan"
             />
           </div>
 
@@ -126,15 +184,15 @@ export default function GovernancePage() {
               <h3 className="text-base font-semibold text-white mb-4">各维度标签覆盖率</h3>
               <div className="space-y-5">
                 {[
-                  { label: '负责人标签 (Owner)', value: ownerCoverage, color: 'emerald' },
-                  { label: '用途标签 (Usage)', value: usageCoverage, color: 'amber' },
-                  { label: '环境标签 (Environment)', value: envCoverage, color: 'cyan' },
-                  { label: '部门标签 (Department)', value: 72, color: 'rose' },
+                  { label: '负责人标签 (Owner)', value: ownerCoverage, color: 'emerald', count: coverageData.withOwner },
+                  { label: '用途标签 (Usage)', value: usageCoverage, color: 'amber', count: coverageData.withUsage },
+                  { label: '环境标签 (Environment)', value: envCoverage, color: 'cyan', count: coverageData.withEnv },
+                  { label: '部门标签 (Department)', value: coverageData.deptCov, color: 'rose', count: coverageData.withDept },
                 ].map((item, idx) => (
                   <div key={idx}>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm text-slate-300">{item.label}</span>
-                      <span className="text-sm font-semibold text-white">{item.value}%</span>
+                      <span className="text-sm font-semibold text-white">{item.value}% <span className="text-slate-500 font-normal">({item.count})</span></span>
                     </div>
                     <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                       <div 
@@ -155,23 +213,48 @@ export default function GovernancePage() {
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
               <h3 className="text-base font-semibold text-white mb-4">按业务系统覆盖率</h3>
               <div className="space-y-3">
-                {['电商交易系统', '用户中心', '订单服务', '大数据分析平台', 'CRM 系统'].map((name, idx) => (
+                {appCoverageData.map((item, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/30 hover:bg-slate-800/50 transition-colors">
-                    <span className="text-sm text-slate-300">{name}</span>
+                    <span className="text-sm text-slate-300">{item.name}</span>
                     <div className="flex items-center gap-3">
                       <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full"
-                          style={{ width: `${60 + idx * 8}%` }}
+                          className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full transition-all duration-500"
+                          style={{ width: `${item.value}%` }}
                         />
                       </div>
-                      <span className="text-sm font-medium text-white w-10 text-right">{60 + idx * 8}%</span>
+                      <span className="text-sm font-medium text-white w-10 text-right">{item.value}%</span>
                     </div>
+                  </div>
+                ))}
+                {appCoverageData.length === 0 && (
+                  <div className="py-8 text-center text-slate-500 text-sm">暂无数据</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {departmentDistribution.length > 0 && (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
+              <h3 className="text-base font-semibold text-white mb-4">部门资源分布</h3>
+              <div className="space-y-3">
+                {departmentDistribution.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-4">
+                    <span className="text-sm text-slate-300 w-32 flex-shrink-0">{item.name}</span>
+                    <div className="flex-1 h-6 bg-slate-800 rounded-md overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-violet-500/60 to-cyan-500/60 rounded-md flex items-center justify-end pr-2 transition-all duration-500"
+                        style={{ width: `${Math.max(item.percentage, 10)}%` }}
+                      >
+                        <span className="text-[11px] font-medium text-white">{item.percentage}%</span>
+                      </div>
+                    </div>
+                    <span className="text-sm text-slate-400 w-16 text-right">{item.count} 个</span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          )}
         </>
       )}
 

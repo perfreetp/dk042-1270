@@ -52,20 +52,32 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
       }
     });
 
-    updateResourceTags(resource.id, newTags);
+    const oldTagStr = resource.tags.length > 0 
+      ? resource.tags.map(t => `${t.key}=${t.value}`).join(', ')
+      : '（空）';
+    const newTagStr = newTags.length > 0 
+      ? newTags.map(t => `${t.key}=${t.value}`).join(', ')
+      : '（空）';
+
+    updateResourceTags(resource.id, newTags, false);
     
     if (changedTags.length > 0) {
+      const changedDetails = changedTags.map(key => {
+        const oldTag = resource.tags.find(t => t.key === key);
+        const newValue = editForm[key as keyof typeof editForm] || '（空）';
+        return `${key}: ${oldTag?.value || '（空）'} → ${newValue}`;
+      }).join('；');
+
       addChangeLog({
-        id: `cl-${Date.now()}`,
         resourceId: resource.id,
         resourceName: resource.name,
         type: 'tag_update',
         field: 'tags',
-        oldValue: resource.tags.map(t => `${t.key}=${t.value}`).join(', '),
-        newValue: newTags.map(t => `${t.key}=${t.value}`).join(', '),
+        oldValue: oldTagStr,
+        newValue: newTagStr,
         operator: '当前用户',
         timestamp: new Date().toISOString(),
-        reason: `更新标签：${changedTags.join('、')}`,
+        reason: `更新标签：${changedTags.join('、')} | ${changedDetails}`,
       });
     }
 
@@ -73,30 +85,30 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
   };
 
   const handleAddTask = () => {
+    const taskType = taskForm.type;
+    const assignee = editForm.Owner || '未指定';
+    
     addTask({
-      id: `task-${Date.now()}`,
       title: `[${resource.name}] - ${taskForm.type === 'idle' ? '处理闲置资源' : taskForm.type === 'risk' ? '处理高风险资源' : taskForm.type === 'tag_missing' ? '补全资源标签' : '资源整理'}`,
-      type: taskForm.type,
+      type: taskType,
       status: 'pending',
       resourceIds: [resource.id],
       priority: taskForm.priority,
-      assignee: editForm.Owner || '未指定',
-      createdAt: new Date().toISOString(),
+      assignee,
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       description: taskForm.description,
     });
     
     addChangeLog({
-      id: `cl-${Date.now()}`,
       resourceId: resource.id,
       resourceName: resource.name,
       type: 'task_create',
       field: 'task',
-      oldValue: '-',
-      newValue: taskForm.type,
+      oldValue: '（无）',
+      newValue: `[${getPriorityName(taskForm.priority)}] ${getTaskTypeName(taskType)}`,
       operator: '当前用户',
       timestamp: new Date().toISOString(),
-      reason: '加入待整理任务',
+      reason: `加入待整理任务，负责人：${assignee}`,
     });
 
     setShowAddTaskModal(false);

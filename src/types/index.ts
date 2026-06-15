@@ -4,13 +4,13 @@ export type ResourceType = 'ecs' | 'oss' | 'slb' | 'rds' | 'redis' | 'vpc' | 'ei
 
 export type ResourceStatus = 'running' | 'stopped' | 'idle' | 'error';
 
-export type TaskType = 'idle_cleanup' | 'tag_complete' | 'risk_fix';
+export type TaskType = 'idle_cleanup' | 'tag_complete' | 'risk_fix' | 'idle' | 'risk' | 'tag_missing' | 'other';
 
 export type TaskStatus = 'pending' | 'in_progress' | 'completed';
 
 export type TaskPriority = 'high' | 'medium' | 'low';
 
-export type ChangeType = 'owner_change' | 'tag_change' | 'status_change';
+export type ChangeType = 'owner_change' | 'tag_change' | 'status_change' | 'tag_update' | 'task_create' | 'app_change';
 
 export interface Tag {
   key: string;

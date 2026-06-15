@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 interface TagBadgeProps {
   label: string;
   value: string;
-  variant?: 'default' | 'cyan' | 'emerald' | 'amber' | 'rose';
+  variant?: 'default' | 'cyan' | 'emerald' | 'amber' | 'rose' | 'violet';
   size?: 'sm' | 'md';
 }
 
@@ -13,6 +13,7 @@ const variantStyles: Record<string, string> = {
   emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
   amber: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   rose: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  violet: 'bg-violet-500/10 text-violet-400 border-violet-500/30',
 };
 
 export default function TagBadge({ label, value, variant = 'default', size = 'sm' }: TagBadgeProps) {

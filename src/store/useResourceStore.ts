@@ -11,7 +11,7 @@ interface ResourceStore {
   
   setSelectedResource: (id: string | null) => void;
   toggleDetailPanel: (show?: boolean) => void;
-  updateResourceTags: (resourceId: string, tags: { key: string; value: string }[]) => void;
+  updateResourceTags: (resourceId: string, tags: { key: string; value: string }[], generateLog?: boolean) => void;
   addChangeLog: (log: Omit<ChangeLog, 'id' | 'time'>) => void;
   updateTaskStatus: (taskId: string, status: Task['status']) => void;
   addTask: (task: Omit<Task, 'id' | 'createdAt'>) => void;
@@ -30,28 +30,32 @@ export const useResourceStore = create<ResourceStore>((set) => ({
     showDetailPanel: show !== undefined ? show : !state.showDetailPanel 
   })),
 
-  updateResourceTags: (resourceId, tags) => set((state) => {
+  updateResourceTags: (resourceId, tags, generateLog = false) => set((state) => {
     const resource = state.resources.find(r => r.id === resourceId);
     const oldTags = resource?.tags || [];
     const oldTagStr = oldTags.map(t => `${t.key}: ${t.value}`).join(', ') || '无标签';
-    const newTagStr = tags.map(t => `${t.key}: ${t.value}`).join(', ');
+    const newTagStr = tags.map(t => `${t.key}: ${t.value}`).join(', ') || '无标签';
 
-    const newLog = {
-      id: `ch-${Date.now()}`,
-      resourceId,
-      resourceName: resource?.name || resourceId,
-      type: 'tag_change' as const,
-      before: oldTagStr,
-      after: newTagStr,
-      operator: '当前用户',
-      time: new Date().toLocaleString('zh-CN'),
-    };
+    let newLogs = state.changeLogs;
+    if (generateLog) {
+      const newLog = {
+        id: `ch-${Date.now()}`,
+        resourceId,
+        resourceName: resource?.name || resourceId,
+        type: 'tag_change' as const,
+        before: oldTagStr,
+        after: newTagStr,
+        operator: '当前用户',
+        time: new Date().toLocaleString('zh-CN'),
+      };
+      newLogs = [newLog, ...state.changeLogs];
+    }
 
     return {
       resources: state.resources.map(r =>
         r.id === resourceId ? { ...r, tags } : r
       ),
-      changeLogs: [newLog, ...state.changeLogs],
+      changeLogs: newLogs,
     };
   }),
 
