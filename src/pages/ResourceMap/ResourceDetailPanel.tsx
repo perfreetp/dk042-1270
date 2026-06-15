@@ -1,10 +1,11 @@
-import { X, Tag, DollarSign, Calendar, Globe, Server, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
+import { X, Tag as TagIcon, DollarSign, Calendar, Globe, Server, AlertTriangle, ClipboardList } from 'lucide-react';
 import { cloudAccounts, regions, applications } from '@/data/mockData';
 import { useResourceStore } from '@/store/useResourceStore';
 import { formatCurrency, getResourceTypeName, getProviderName } from '@/utils/format';
 import StatusBadge from '@/components/StatusBadge';
 import TagBadge from '@/components/TagBadge';
-import type { CloudResource } from '@/types';
+import type { CloudResource, Tag } from '@/types';
 
 interface ResourceDetailPanelProps {
   resource: CloudResource;
@@ -12,15 +13,94 @@ interface ResourceDetailPanelProps {
 }
 
 export default function ResourceDetailPanel({ resource, onClose }: ResourceDetailPanelProps) {
-  const { updateResourceTags } = useResourceStore();
-  
+  const { updateResourceTags, addChangeLog, addTask } = useResourceStore();
+  const [showEditTagModal, setShowEditTagModal] = useState(false);
+  const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    Owner: resource.tags.find(t => t.key === 'Owner')?.value || '',
+    Usage: resource.tags.find(t => t.key === 'Usage')?.value || '',
+    Department: resource.tags.find(t => t.key === 'Department')?.value || '',
+    Environment: resource.tags.find(t => t.key === 'Environment')?.value || '',
+  });
+  const [taskForm, setTaskForm] = useState({
+    type: 'idle' as 'idle' | 'risk' | 'tag_missing' | 'other',
+    description: '',
+    priority: 'medium' as 'low' | 'medium' | 'high',
+  });
+
   const account = cloudAccounts.find(a => a.id === resource.accountId);
   const region = regions.find(r => r.id === resource.regionId);
   const app = applications.find(a => a.id === resource.appId);
 
-  const ownerTag = resource.tags.find(t => t.key === 'Owner');
-  const usageTag = resource.tags.find(t => t.key === 'Usage');
-  const envTag = resource.tags.find(t => t.key === 'Environment');
+  const handleSaveTags = () => {
+    const existingKeys = ['Owner', 'Usage', 'Department', 'Environment'];
+    const otherTags = resource.tags.filter(t => !existingKeys.includes(t.key));
+    const newTags: Tag[] = [
+      ...otherTags,
+      { key: 'Owner', value: editForm.Owner },
+      { key: 'Usage', value: editForm.Usage },
+      { key: 'Department', value: editForm.Department },
+      { key: 'Environment', value: editForm.Environment },
+    ].filter(t => t.value.trim() !== '');
+    
+    const changedTags: string[] = [];
+    existingKeys.forEach(key => {
+      const oldTag = resource.tags.find(t => t.key === key);
+      const newValue = editForm[key as keyof typeof editForm];
+      if ((oldTag?.value || '') !== newValue) {
+        changedTags.push(key);
+      }
+    });
+
+    updateResourceTags(resource.id, newTags);
+    
+    if (changedTags.length > 0) {
+      addChangeLog({
+        id: `cl-${Date.now()}`,
+        resourceId: resource.id,
+        resourceName: resource.name,
+        type: 'tag_update',
+        field: 'tags',
+        oldValue: resource.tags.map(t => `${t.key}=${t.value}`).join(', '),
+        newValue: newTags.map(t => `${t.key}=${t.value}`).join(', '),
+        operator: '当前用户',
+        timestamp: new Date().toISOString(),
+        reason: `更新标签：${changedTags.join('、')}`,
+      });
+    }
+
+    setShowEditTagModal(false);
+  };
+
+  const handleAddTask = () => {
+    addTask({
+      id: `task-${Date.now()}`,
+      title: `[${resource.name}] - ${taskForm.type === 'idle' ? '处理闲置资源' : taskForm.type === 'risk' ? '处理高风险资源' : taskForm.type === 'tag_missing' ? '补全资源标签' : '资源整理'}`,
+      type: taskForm.type,
+      status: 'pending',
+      resourceIds: [resource.id],
+      priority: taskForm.priority,
+      assignee: editForm.Owner || '未指定',
+      createdAt: new Date().toISOString(),
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      description: taskForm.description,
+    });
+    
+    addChangeLog({
+      id: `cl-${Date.now()}`,
+      resourceId: resource.id,
+      resourceName: resource.name,
+      type: 'task_create',
+      field: 'task',
+      oldValue: '-',
+      newValue: taskForm.type,
+      operator: '当前用户',
+      timestamp: new Date().toISOString(),
+      reason: '加入待整理任务',
+    });
+
+    setShowAddTaskModal(false);
+  };
 
   return (
     <div className="w-96 bg-slate-900/90 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden animate-slide-in-right flex flex-col">
@@ -120,10 +200,13 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h5 className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Tag size={12} />
+              <TagIcon size={12} />
               标签
             </h5>
-            <button className="text-xs text-cyan-400 hover:text-cyan-300">编辑标签</button>
+            <button 
+              onClick={() => setShowEditTagModal(true)}
+              className="text-xs text-cyan-400 hover:text-cyan-300"
+            >编辑标签</button>
           </div>
           
           <div className="flex flex-wrap gap-2">
@@ -151,13 +234,185 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
       </div>
 
       <div className="p-4 border-t border-slate-800 flex gap-2">
-        <button className="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded-lg transition-colors">
+        <button 
+          onClick={() => setShowEditTagModal(true)}
+          className="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded-lg transition-colors"
+        >
           编辑标签
         </button>
-        <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg border border-slate-700 transition-colors">
+        <button 
+          onClick={() => setShowAddTaskModal(true)}
+          className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-lg border border-slate-700 transition-colors"
+        >
           加入任务
         </button>
       </div>
+
+      {showEditTagModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowEditTagModal(false)}>
+          <div className="w-[450px] bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="font-semibold text-white">编辑标签</h3>
+              <button onClick={() => setShowEditTagModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">负责人</label>
+                <input
+                  type="text"
+                  value={editForm.Owner}
+                  onChange={(e) => setEditForm(f => ({ ...f, Owner: e.target.value }))}
+                  placeholder="输入负责人姓名"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">用途</label>
+                <input
+                  type="text"
+                  value={editForm.Usage}
+                  onChange={(e) => setEditForm(f => ({ ...f, Usage: e.target.value }))}
+                  placeholder="如：生产环境、测试环境、开发环境"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">部门</label>
+                <input
+                  type="text"
+                  value={editForm.Department}
+                  onChange={(e) => setEditForm(f => ({ ...f, Department: e.target.value }))}
+                  placeholder="如：研发部、运维部"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">环境</label>
+                <select
+                  value={editForm.Environment}
+                  onChange={(e) => setEditForm(f => ({ ...f, Environment: e.target.value }))}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                >
+                  <option value="">请选择</option>
+                  <option value="生产">生产</option>
+                  <option value="测试">测试</option>
+                  <option value="开发">开发</option>
+                  <option value="预发布">预发布</option>
+                </select>
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
+              <button
+                onClick={() => setShowEditTagModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 text-sm font-medium rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSaveTags}
+                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAddTaskModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowAddTaskModal(false)}>
+          <div className="w-[450px] bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="font-semibold text-white flex items-center gap-2">
+                <ClipboardList size={18} className="text-cyan-400" />
+                加入待整理任务
+              </h3>
+              <button onClick={() => setShowAddTaskModal(false)} className="text-slate-400 hover:text-slate-200">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">任务类型</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'idle', label: '闲置处理', color: 'amber' },
+                    { value: 'risk', label: '风险处理', color: 'rose' },
+                    { value: 'tag_missing', label: '补全标签', color: 'cyan' },
+                    { value: 'other', label: '其他', color: 'slate' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setTaskForm(f => ({ ...f, type: opt.value as any }))}
+                      className={cn(
+                        'px-3 py-2 text-sm rounded-lg border transition-colors',
+                        taskForm.type === opt.value
+                          ? `bg-${opt.color}-500/15 text-${opt.color}-400 border-${opt.color}-500/30`
+                          : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:border-slate-600'
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">优先级</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'low', label: '低' },
+                    { value: 'medium', label: '中' },
+                    { value: 'high', label: '高' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setTaskForm(f => ({ ...f, priority: opt.value as any }))}
+                      className={cn(
+                        'px-3 py-2 text-sm rounded-lg border transition-colors',
+                        taskForm.priority === opt.value
+                          ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+                          : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:border-slate-600'
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">任务描述</label>
+                <textarea
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="请输入任务描述..."
+                  rows={3}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 resize-none"
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
+              <button
+                onClick={() => setShowAddTaskModal(false)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 text-sm font-medium rounded-lg border border-slate-700 hover:bg-slate-700 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddTask}
+                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                加入任务
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function cn(...classes: (string | boolean | undefined)[]): string {
+  return classes.filter(Boolean).join(' ');
 }

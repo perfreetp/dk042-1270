@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { costRecords, costByType, cloudAccounts, regions, applications } from '@/data/mockData';
 import { useResourceStore } from '@/store/useResourceStore';
+import { useFilterStore } from '@/store/useFilterStore';
 import { formatCurrency } from '@/utils/format';
 import StatCard from '@/components/StatCard';
 
@@ -21,18 +22,30 @@ type ViewMode = 'account' | 'region' | 'app' | 'type';
 
 export default function CostViewPage() {
   const { resources } = useResourceStore();
+  const { accountIds, regionIds, appIds, resourceTypes, searchKeyword } = useFilterStore();
   const [viewMode, setViewMode] = useState<ViewMode>('type');
   const [period, setPeriod] = useState<'6m' | '12m'>('12m');
 
-  const totalMonthlyCost = useMemo(() => {
-    return resources.reduce((sum, r) => sum + r.monthlyCost, 0);
-  }, [resources]);
+  const filteredResources = useMemo(() => {
+    return resources.filter(r => {
+      if (accountIds.length > 0 && !accountIds.includes(r.accountId)) return false;
+      if (regionIds.length > 0 && !regionIds.includes(r.regionId)) return false;
+      if (appIds.length > 0 && !appIds.includes(r.appId)) return false;
+      if (resourceTypes.length > 0 && !resourceTypes.includes(r.type)) return false;
+      if (searchKeyword && !r.name.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
+      return true;
+    });
+  }, [resources, accountIds, regionIds, appIds, resourceTypes, searchKeyword]);
 
-  const totalResources = resources.length;
+  const totalMonthlyCost = useMemo(() => {
+    return filteredResources.reduce((sum, r) => sum + r.monthlyCost, 0);
+  }, [filteredResources]);
+
+  const totalResources = filteredResources.length;
   
   const idleCost = useMemo(() => {
-    return resources.filter(r => r.isIdle).reduce((sum, r) => sum + r.monthlyCost, 0);
-  }, [resources]);
+    return filteredResources.filter(r => r.isIdle).reduce((sum, r) => sum + r.monthlyCost, 0);
+  }, [filteredResources]);
 
   const trendData = period === '12m' ? costRecords : costRecords.slice(-6);
   
@@ -42,49 +55,49 @@ export default function CostViewPage() {
 
   const costByAccount = useMemo(() => {
     const map = new Map<string, number>();
-    resources.forEach(r => {
+    filteredResources.forEach(r => {
       map.set(r.accountId, (map.get(r.accountId) || 0) + r.monthlyCost);
     });
     return Array.from(map.entries()).map(([id, amount]) => ({
       name: cloudAccounts.find(a => a.id === id)?.name || id,
       amount,
-      percentage: Math.round((amount / totalMonthlyCost) * 100),
+      percentage: totalMonthlyCost > 0 ? Math.round((amount / totalMonthlyCost) * 100) : 0,
     })).sort((a, b) => b.amount - a.amount);
-  }, [resources, totalMonthlyCost]);
+  }, [filteredResources, totalMonthlyCost]);
 
   const costByRegion = useMemo(() => {
     const map = new Map<string, number>();
-    resources.forEach(r => {
+    filteredResources.forEach(r => {
       map.set(r.regionId, (map.get(r.regionId) || 0) + r.monthlyCost);
     });
     return Array.from(map.entries()).map(([id, amount]) => ({
       name: regions.find(r => r.id === id)?.name || id,
       amount,
-      percentage: Math.round((amount / totalMonthlyCost) * 100),
+      percentage: totalMonthlyCost > 0 ? Math.round((amount / totalMonthlyCost) * 100) : 0,
     })).sort((a, b) => b.amount - a.amount).slice(0, 8);
-  }, [resources, totalMonthlyCost]);
+  }, [filteredResources, totalMonthlyCost]);
 
   const costByApp = useMemo(() => {
     const map = new Map<string, number>();
-    resources.forEach(r => {
+    filteredResources.forEach(r => {
       map.set(r.appId, (map.get(r.appId) || 0) + r.monthlyCost);
     });
     return Array.from(map.entries()).map(([id, amount]) => ({
       name: applications.find(a => a.id === id)?.name || id,
       amount,
-      percentage: Math.round((amount / totalMonthlyCost) * 100),
+      percentage: totalMonthlyCost > 0 ? Math.round((amount / totalMonthlyCost) * 100) : 0,
     })).sort((a, b) => b.amount - a.amount).slice(0, 10);
-  }, [resources, totalMonthlyCost]);
+  }, [filteredResources, totalMonthlyCost]);
 
   const pieData = viewMode === 'account' ? costByAccount :
                    viewMode === 'region' ? costByRegion :
                    viewMode === 'app' ? costByApp : costByType;
 
   const topResources = useMemo(() => {
-    return [...resources]
+    return [...filteredResources]
       .sort((a, b) => b.monthlyCost - a.monthlyCost)
       .slice(0, 10);
-  }, [resources]);
+  }, [filteredResources]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
