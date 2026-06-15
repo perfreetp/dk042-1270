@@ -5,8 +5,10 @@ import Inventory from '@/pages/Inventory';
 import CostView from '@/pages/CostView';
 import Governance from '@/pages/Governance';
 import Changes from '@/pages/Changes';
+import Dashboard from '@/pages/Dashboard';
 import Sidebar from '@/components/Sidebar';
 import TopBar from '@/components/TopBar';
+import GlobalResourceDetail from '@/components/GlobalResourceDetail';
 
 const pageConfig: Record<string, { title: string; subtitle: string }> = {
   '/': { title: '资源地图', subtitle: '可视化展示账号、区域、业务与资源的拓扑关系' },
@@ -14,6 +16,7 @@ const pageConfig: Record<string, { title: string; subtitle: string }> = {
   '/cost': { title: '成本视图', subtitle: '费用趋势分析与成本分布洞察' },
   '/governance': { title: '标签治理', subtitle: '标签覆盖率、闲置资源识别与风险管控' },
   '/changes': { title: '变更记录', subtitle: '资源归属变更历史与待整理任务追踪' },
+  '/dashboard': { title: '治理看板', subtitle: '按部门和负责人汇总治理进度，快速跟进待处理项' },
 };
 
 function AppContent() {
@@ -39,10 +42,13 @@ function AppContent() {
               <Route path="/cost" element={<CostView />} />
               <Route path="/governance" element={<Governance />} />
               <Route path="/changes" element={<Changes />} />
+              <Route path="/dashboard" element={<Dashboard />} />
             </Routes>
           </div>
         </main>
       </div>
+      
+      <GlobalResourceDetail />
     </div>
   );
 }

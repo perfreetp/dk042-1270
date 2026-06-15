@@ -538,13 +538,6 @@ export default function ResourceMapPage() {
           </svg>
         </div>
       </div>
-
-      {showDetailPanel && selectedResource && (
-        <ResourceDetailPanel 
-          resource={selectedResource} 
-          onClose={() => toggleDetailPanel(false)} 
-        />
-      )}
     </div>
   );
 }

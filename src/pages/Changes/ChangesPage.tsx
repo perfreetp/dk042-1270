@@ -382,6 +382,41 @@ export default function ChangesPage() {
                                   </div>
                                 </div>
                               )}
+
+                              {(() => {
+                                const resourceLogs = changeLogs
+                                  .filter(cl => cl.resourceId === log.resourceId && cl.id !== log.id)
+                                  .slice(0, 5);
+                                if (resourceLogs.length === 0) return null;
+                                return (
+                                  <div className="mt-4 pt-3 border-t border-slate-700/50">
+                                    <div className="text-[11px] text-slate-500 mb-2">
+                                      该资源最近 {resourceLogs.length} 次变更
+                                    </div>
+                                    <div className="space-y-1.5">
+                                      {resourceLogs.map((rl) => {
+                                        const rlTime = (rl as any).time || formatTimestamp((rl as any).timestamp || rl.time);
+                                        const rlOld = (rl as any).before || (rl as any).oldValue || '';
+                                        const rlNew = (rl as any).after || (rl as any).newValue || '';
+                                        return (
+                                          <div key={rl.id} className="flex items-center gap-2 text-[11px] py-1.5 px-2 rounded bg-slate-700/20 hover:bg-slate-700/40 transition-colors">
+                                            <span className={cn(
+                                              'px-1.5 py-0.5 rounded text-[10px] font-medium border',
+                                              changeTypeColors[rl.type]?.replace(/bg-/, 'bg-').replace(/\/10/, '/15')
+                                            )}>
+                                              {getChangeTypeName(rl.type)}
+                                            </span>
+                                            <span className="text-slate-400 truncate max-w-[120px]" title={rlOld}>{rlOld || '-'}</span>
+                                            <ArrowRight size={10} className="text-slate-600 flex-shrink-0" />
+                                            <span className="text-emerald-400 truncate max-w-[120px]" title={rlNew}>{rlNew || '-'}</span>
+                                            <span className="text-slate-600 ml-auto whitespace-nowrap">{rlTime}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>

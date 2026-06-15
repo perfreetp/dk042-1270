@@ -8,7 +8,8 @@ import {
   Cloud,
   Settings,
   Bell,
-  Search
+  Search,
+  LayoutDashboard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,7 @@ const navItems = [
   { path: '/cost', label: '成本视图', icon: DollarSign },
   { path: '/governance', label: '标签治理', icon: Tags },
   { path: '/changes', label: '变更记录', icon: History },
+  { path: '/dashboard', label: '治理看板', icon: LayoutDashboard },
 ];
 
 export default function Sidebar() {

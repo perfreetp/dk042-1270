@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Tag as TagIcon, DollarSign, Calendar, Globe, Server, AlertTriangle, ClipboardList } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, Tag as TagIcon, DollarSign, Calendar, Globe, Server, AlertTriangle, ClipboardList, ExternalLink, CheckCircle } from 'lucide-react';
 import { cloudAccounts, regions, applications } from '@/data/mockData';
 import { useResourceStore } from '@/store/useResourceStore';
-import { formatCurrency, getResourceTypeName, getProviderName } from '@/utils/format';
+import { formatCurrency, getResourceTypeName, getProviderName, getTaskTypeName, getPriorityName } from '@/utils/format';
 import StatusBadge from '@/components/StatusBadge';
 import TagBadge from '@/components/TagBadge';
 import type { CloudResource, Tag } from '@/types';
@@ -14,8 +15,11 @@ interface ResourceDetailPanelProps {
 
 export default function ResourceDetailPanel({ resource, onClose }: ResourceDetailPanelProps) {
   const { updateResourceTags, addChangeLog, addTask } = useResourceStore();
+  const navigate = useNavigate();
   const [showEditTagModal, setShowEditTagModal] = useState(false);
   const [showAddTaskModal, setShowAddTaskModal] = useState(false);
+  const [taskCreated, setTaskCreated] = useState<{ type: string; priority: string; assignee: string } | null>(null);
+  const [tagSaved, setTagSaved] = useState(false);
   const [editForm, setEditForm] = useState({
     Owner: resource.tags.find(t => t.key === 'Owner')?.value || '',
     Usage: resource.tags.find(t => t.key === 'Usage')?.value || '',
@@ -79,6 +83,9 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
         timestamp: new Date().toISOString(),
         reason: `更新标签：${changedTags.join('、')} | ${changedDetails}`,
       });
+
+      setTagSaved(true);
+      setTimeout(() => setTagSaved(false), 3000);
     }
 
     setShowEditTagModal(false);
@@ -111,6 +118,7 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
       reason: `加入待整理任务，负责人：${assignee}`,
     });
 
+    setTaskCreated({ type: taskType, priority: taskForm.priority, assignee });
     setShowAddTaskModal(false);
   };
 
@@ -259,6 +267,36 @@ export default function ResourceDetailPanel({ resource, onClose }: ResourceDetai
           加入任务
         </button>
       </div>
+
+      {tagSaved && (
+        <div className="px-4 py-3 border-t border-emerald-500/30 bg-emerald-500/10 flex items-center gap-2">
+          <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+          <span className="text-xs text-emerald-400">标签已保存，各页面已同步更新</span>
+        </div>
+      )}
+
+      {taskCreated && (
+        <div className="px-4 py-3 border-t border-cyan-500/30 bg-cyan-500/10">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={14} className="text-cyan-400 flex-shrink-0" />
+              <span className="text-xs text-cyan-400">任务已创建</span>
+            </div>
+            <button
+              onClick={() => { setTaskCreated(null); navigate('/changes'); }}
+              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 font-medium"
+            >
+              前往任务页
+              <ExternalLink size={12} />
+            </button>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span>类型：<span className="text-slate-200">{getTaskTypeName(taskCreated.type)}</span></span>
+            <span>优先级：<span className="text-slate-200">{getPriorityName(taskCreated.priority)}</span></span>
+            <span>负责人：<span className="text-slate-200">{taskCreated.assignee}</span></span>
+          </div>
+        </div>
+      )}
 
       {showEditTagModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowEditTagModal(false)}>
